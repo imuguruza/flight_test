@@ -58,6 +58,7 @@
 
 
 mavros_msgs::State current_state;
+geometry_msgs::PoseStamped read_local_pos;
 mavros_msgs::PositionTarget path[STEPS];
 
 
@@ -137,6 +138,12 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg)
     current_state = *msg;
 }
 
+void pos_state_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+    read_local_pos = *msg;
+    ROS_INFO("Drone position is %f %f %f", read_local_pos.pose.position.x,
+            read_local_pos.pose.position.y, read_local_pos.pose.position.z);
+}
 
 int main(int argc, char **argv)
 {
@@ -157,6 +164,9 @@ int main(int argc, char **argv)
                                         ("mavros/set_mode");
     ros::Publisher target_local_pub     = nh.advertise<mavros_msgs::PositionTarget>
                                         ("mavros/setpoint_raw/local", 10);
+
+    ros::Subscriber local_pose_sub      = nh.subscribe<geometry_msgs::PoseStamped>
+                                        ("mavros/local_position/state", 10, pos_state_cb);
 
     //the setpoint publishing rate MUST be faster than 2Hz
     ros::Rate rate(RATE);
@@ -244,15 +254,28 @@ HOME:
     // give the system 2 seconds to get to home position
     i = RATE * 2;
     ROS_INFO("going home");
-    while(ros::ok() && i>0){
+    //while(ros::ok() && i>0){
+    while(ros::ok()){
         // return to home position if px4 falls out of offboard mode or disarms
-        if(current_state.mode != "OFFBOARD" || !current_state.armed){
-            goto HOME;
-        }
-        i--;
+        // it does nothing
+        //if(current_state.mode != "OFFBOARD" || !current_state.armed){
+        //    goto HOME;
+        //}
+        //i--;
         target_local_pub.publish(position_home);
         ros::spinOnce();
         rate.sleep();
+        //Wait till drone arrives home position
+        //-- Not working
+        if ( read_local_pos.pose.position.x == position_home.position.x ||
+                read_local_pos.pose.position.y == position_home.position.y)
+             {
+               ROS_INFO("%f %f %f", read_local_pos.pose.position.x,
+                                     read_local_pos.pose.position.y,
+                                     read_local_pos.pose.position.z);
+               ROS_INFO("Not home yet");
+              break ;
+             }
     }
 
 
