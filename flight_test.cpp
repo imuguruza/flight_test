@@ -36,11 +36,6 @@
  * license@modalai.com
  */
 
-/*
-Code modifications by @imuguruza for automatic takeoff and landing, once CTRL + c
-is pressed
-*/
-
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <mavros_msgs/CommandBool.h>
@@ -50,14 +45,11 @@ is pressed
 #include <mavros_msgs/PositionTarget.h>
 
 #include <math.h>
-#include <signal.h>
-#include <termios.h>
-#include <fcntl.h>
 
 #define FLIGHT_ALTITUDE 1.5f
 #define RATE            20  // loop rate hz
-#define RADIUS          20.0 // radius of figure 8 in meters
-#define CYCLE_S         64   // time to complete one figure 8 cycle in seconds
+#define RADIUS          10 // radius of figure 8 in meters
+#define CYCLE_S         60   // time to complete one figure 8 cycle in seconds
 #define STEPS           (CYCLE_S*RATE)
 
 #define PI  3.14159265358979323846264338327950
@@ -143,21 +135,6 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg)
     current_state = *msg;
 }
 
-int getch()
-{
-  static struct termios oldt, newt;
-  fcntl(0, F_SETFL, O_NONBLOCK);             // set to non-blocking
-  tcgetattr( STDIN_FILENO, &oldt);           // save old settings
-  newt = oldt;
-  newt.c_lflag &= ~(ICANON);                 // disable buffering
-  tcsetattr( STDIN_FILENO, TCSANOW, &newt);  // apply new settings
-
-  int c = getchar();  // read character (non-blocking)
-
-  tcsetattr( STDIN_FILENO, TCSANOW, &oldt);  // restore old settings
-  //printf("%d key pressed...\n", c);
-  return c;
-}
 
 int main(int argc, char **argv)
 {
@@ -224,43 +201,17 @@ int main(int argc, char **argv)
         rate.sleep();
     }
 
-    mavros_msgs::SetMode offb_set_mode;
-    offb_set_mode.request.custom_mode = "OFFBOARD";
 
-    mavros_msgs::CommandBool arm_cmd;
-    arm_cmd.request.value = true;
-
+HOME:
     ROS_INFO("waiting for offboard mode");
     // wait for the system to be armed and in offboard mode
-    ros::Time last_request = ros::Time::now();
     while(ros::ok()){
-
         target_local_pub.publish(position_home);
         ros::spinOnce();
         rate.sleep();
-
-        if( current_state.mode != "OFFBOARD" &&
-            (ros::Time::now() - last_request > ros::Duration(5.0))){
-            if( set_mode_client.call(offb_set_mode) &&
-            offb_set_mode.response.mode_sent){
-              ROS_INFO("Offboard enabled");
-              }
-            last_request = ros::Time::now();
-        }
-        else {
-            if( !current_state.armed &&
-                (ros::Time::now() - last_request > ros::Duration(5.0))){
-                if( arming_client.call(arm_cmd) &&
-                    arm_cmd.response.success){
-                    ROS_INFO("Vehicle armed");
-                }
-                last_request = ros::Time::now();
-            }
-        }
         if(current_state.mode == "OFFBOARD" && current_state.armed) break;
     }
 
-HOME:
     // give the system 2 seconds to get to home position
     i = RATE * 2;
     ROS_INFO("going home");
@@ -280,19 +231,12 @@ HOME:
     i=0;
     ROS_INFO("following path");
     while(ros::ok()){
-
         // return to home position if px4 falls out of offboard mode or disarms
         if(current_state.mode != "OFFBOARD" || !current_state.armed){
             goto HOME;
         }
         target_local_pub.publish(path[i]);
-        i++;
-        // TODO: SEND HOME THE DRONE BEFORE EXITING THE NAV
-        // int c = getch();   // call your non-blocking input function
-        // if (c == 'l'){
-        //   ROS_INFO("l key pressed...");
-        //   goto HOME;
-        // }
+    i++;
         if(i>=STEPS) i=0;
 
         ros::spinOnce();
@@ -301,37 +245,6 @@ HOME:
 
     return 0;
 }
-
-/* HOW TO ARM , LAND AND CHANGE MODE
-
-    mavros_msgs::SetMode offb_set_mode;
-    offb_set_mode.request.custom_mode = "OFFBOARD";
-
-    mavros_msgs::CommandBool arm_cmd;
-    arm_cmd.request.value = true;
-
-    mavros_msgs::CommandTOL land_cmd;
-    land_cmd.request.yaw = 0;
-    land_cmd.request.latitude = 0;
-    land_cmd.request.longitude = 0;
-    land_cmd.request.altitude = 0;
-
-    if( set_mode_client.call(offb_set_mode) &&
-        offb_set_mode.response.mode_sent){
-        ROS_INFO("Offboard enabled");
-    }
-
-    if( arming_client.call(arm_cmd) &&
-        arm_cmd.response.success){
-        ROS_INFO("Vehicle armed");
-    }
-
-        ROS_INFO("tring to land");
-    while (!(land_client.call(land_cmd) &&
-            land_cmd.response.success)){
-      //local_pos_pub.publish(pose);
-      ROS_INFO("tring to land");
-*
 
 
 /* HOW TO ARM , LAND AND CHANGE MODE
