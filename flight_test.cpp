@@ -201,8 +201,14 @@ int main(int argc, char **argv)
         rate.sleep();
     }
 
+    mavros_msgs::SetMode offb_set_mode;
+    offb_set_mode.request.custom_mode = "OFFBOARD";
 
-HOME:
+    mavros_msgs::CommandBool arm_cmd;
+    arm_cmd.request.value = true;
+
+    ros::Time last_request = ros::Time::now();
+
     ROS_INFO("waiting for offboard mode");
     // wait for the system to be armed and in offboard mode
     while(ros::ok()){
@@ -210,8 +216,29 @@ HOME:
         ros::spinOnce();
         rate.sleep();
         if(current_state.mode == "OFFBOARD" && current_state.armed) break;
-    }
 
+
+        if( current_state.mode != "OFFBOARD" &&
+          (ros::Time::now() - last_request > ros::Duration(5.0))){
+            if( set_mode_client.call(offb_set_mode) &&
+              offb_set_mode.response.mode_sent){
+                ROS_INFO("Offboard enabled");
+              }
+        last_request = ros::Time::now();
+        } else {
+          if( !current_state.armed &&
+            (ros::Time::now() - last_request > ros::Duration(5.0))){
+              if( arming_client.call(arm_cmd) &&
+              arm_cmd.response.success){
+                ROS_INFO("Vehicle armed");
+        }
+        last_request = ros::Time::now();
+    }
+}
+
+}
+
+HOME:
     // give the system 2 seconds to get to home position
     i = RATE * 2;
     ROS_INFO("going home");
