@@ -36,6 +36,8 @@
  * license@modalai.com
  */
 
+ // modified by @imuguruza
+
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <mavros_msgs/CommandBool.h>
