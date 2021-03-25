@@ -60,7 +60,21 @@
 mavros_msgs::State current_state;
 geometry_msgs::PoseStamped read_local_pos;
 mavros_msgs::PositionTarget path[STEPS];
+mavros_msgs::PositionTarget position_home;
 
+
+
+void state_cb(const mavros_msgs::State::ConstPtr& msg)
+{
+    current_state = *msg;
+}
+
+void pos_state_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+    read_local_pos = *msg;
+    //ROS_INFO("Drone position is %f %f %f", read_local_pos.pose.position.x,
+    //        read_local_pos.pose.position.y, read_local_pos.pose.position.z);
+}
 
 // generate a path following Bernoulli's lemiscate as a parametric equation
 // note this is in ENU coordinates since mavros will convert to NED
@@ -117,7 +131,7 @@ void init_path()
         // the right, not forward along y axis
         path[i].yaw = atan2(-path[i].velocity.x, path[i].velocity.y) + (PI/2.0f);
 
-        printf("x:%7.3f y:%7.3f yaw:%7.1f\n", path[i].position.x, path[i].position.y, path[i].yaw*180.0f/PI);
+        //printf("x:%7.3f y:%7.3f yaw:%7.1f\n", path[i].position.x, path[i].position.y, path[i].yaw*180.0f/PI);
     }
 
     // calculate yaw_rate by dirty differentiating yaw
@@ -133,16 +147,56 @@ void init_path()
 }
 
 
-void state_cb(const mavros_msgs::State::ConstPtr& msg)
-{
-    current_state = *msg;
-}
 
-void pos_state_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
+void go_home()
 {
-    read_local_pos = *msg;
-    ROS_INFO("Drone position is %f %f %f", read_local_pos.pose.position.x,
-            read_local_pos.pose.position.y, read_local_pos.pose.position.z);
+  // keep this pose constant, home position
+  // mavros_msgs::PositionTarget position_home;
+  position_home.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+  position_home.type_mask = mavros_msgs::PositionTarget::IGNORE_VX |
+                            mavros_msgs::PositionTarget::IGNORE_VY |
+                            mavros_msgs::PositionTarget::IGNORE_VZ |
+                            mavros_msgs::PositionTarget::IGNORE_AFX |
+                            mavros_msgs::PositionTarget::IGNORE_AFY |
+                            mavros_msgs::PositionTarget::IGNORE_AFZ |
+                            mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+  position_home.position.x = 0;
+  position_home.position.y = 0;
+  position_home.position.z = FLIGHT_ALTITUDE;
+  position_home.velocity.x = 0;
+  position_home.velocity.y = 0;
+  position_home.velocity.z = 0;
+  position_home.acceleration_or_force.x = 0;
+  position_home.acceleration_or_force.y = 0;
+  position_home.acceleration_or_force.z = 0;
+  // path starts pointing 45 degrees right of forward (y axis in ENU)
+  // ENU yaw is angle left (CCW) of X axis which is to the right.
+  // hence yaw here is -45 degrees
+  // plus 90 gets us from x axis as 0 to y axis as 0
+  position_home.yaw = (-45.0f + 90.0f) * PI / 180.0f;
+  position_home.yaw_rate = 0;
+
+  ROS_INFO("going home");
+
+  ros::NodeHandle nh;
+  ros::Rate rate(RATE);
+  ros::Publisher target_local_pub     = nh.advertise<mavros_msgs::PositionTarget>
+                                      ("mavros/setpoint_raw/local", 10);
+  while(ros::ok()){
+    target_local_pub.publish(position_home);
+    //Round these numbers instead of casting to int....
+     while ( (int)(read_local_pos.pose.position.x) != (int)position_home.position.x ||
+             (int)read_local_pos.pose.position.y != (int)position_home.position.y )
+         {
+           ROS_INFO("Not home yet");
+           ROS_INFO("Pose is %f %f", read_local_pos.pose.position.x,
+                                     read_local_pos.pose.position.y);
+           target_local_pub.publish(position_home);
+           ros::spinOnce();
+           rate.sleep();
+         }
+    return;
+  }
 }
 
 int main(int argc, char **argv)
@@ -166,20 +220,11 @@ int main(int argc, char **argv)
                                         ("mavros/setpoint_raw/local", 10);
 
     ros::Subscriber local_pose_sub      = nh.subscribe<geometry_msgs::PoseStamped>
-                                        ("mavros/local_position/state", 10, pos_state_cb);
+                                        ("mavros/local_position/pose", 10, pos_state_cb);
 
     //the setpoint publishing rate MUST be faster than 2Hz
     ros::Rate rate(RATE);
 
-    // wait for FCU connection
-    while(ros::ok() && current_state.connected){
-        ros::spinOnce();
-        rate.sleep();
-        ROS_INFO("\rconnecting to FCT...");
-    }
-
-    // keep this pose constant, home position
-    mavros_msgs::PositionTarget position_home;
     position_home.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
     position_home.type_mask = mavros_msgs::PositionTarget::IGNORE_VX |
                               mavros_msgs::PositionTarget::IGNORE_VY |
@@ -204,10 +249,17 @@ int main(int argc, char **argv)
     position_home.yaw = (-45.0f + 90.0f) * PI / 180.0f;
     position_home.yaw_rate = 0;
 
+    // wait for FCU connection
+    while(ros::ok() && current_state.connected){
+        ros::spinOnce();
+        rate.sleep();
+        ROS_INFO("\rconnecting to FCT...");
+    }
+
     init_path();
 
     //send a few setpoints before starting
-    for(i = 100; ros::ok() && i > 0; --i){
+    for(i = 10; ros::ok() && i > 0; --i){
         target_local_pub.publish(position_home);
         ros::spinOnce();
         rate.sleep();
@@ -227,57 +279,23 @@ int main(int argc, char **argv)
         target_local_pub.publish(position_home);
         ros::spinOnce();
         rate.sleep();
-        if(current_state.mode == "OFFBOARD" && current_state.armed) break;
-
-
-        if( current_state.mode != "OFFBOARD" &&
-          (ros::Time::now() - last_request > ros::Duration(5.0))){
-            if( set_mode_client.call(offb_set_mode) &&
-              offb_set_mode.response.mode_sent){
+        if(current_state.mode == "OFFBOARD" && current_state.armed)
+          break;
+        if(current_state.mode != "OFFBOARD" && (ros::Time::now() - last_request > ros::Duration(5.0))){
+          if( set_mode_client.call(offb_set_mode) && offb_set_mode.response.mode_sent)
                 ROS_INFO("Offboard enabled");
-              }
-        last_request = ros::Time::now();
+          last_request = ros::Time::now();
         } else {
-          if( !current_state.armed &&
-            (ros::Time::now() - last_request > ros::Duration(5.0))){
-              if( arming_client.call(arm_cmd) &&
-              arm_cmd.response.success){
+          if( !current_state.armed && (ros::Time::now() - last_request > ros::Duration(5.0))){
+            if( arming_client.call(arm_cmd) && arm_cmd.response.success)
                 ROS_INFO("Vehicle armed");
+          last_request = ros::Time::now();
+          }
         }
-        last_request = ros::Time::now();
     }
-}
 
-}
-
-HOME:
-    // give the system 2 seconds to get to home position
-    i = RATE * 2;
     ROS_INFO("going home");
-    //while(ros::ok() && i>0){
-    while(ros::ok()){
-        // return to home position if px4 falls out of offboard mode or disarms
-        // it does nothing
-        //if(current_state.mode != "OFFBOARD" || !current_state.armed){
-        //    goto HOME;
-        //}
-        //i--;
-        target_local_pub.publish(position_home);
-        ros::spinOnce();
-        rate.sleep();
-        //Wait till drone arrives home position
-        //-- Not working
-        if ( read_local_pos.pose.position.x == position_home.position.x ||
-                read_local_pos.pose.position.y == position_home.position.y)
-             {
-               ROS_INFO("%f %f %f", read_local_pos.pose.position.x,
-                                     read_local_pos.pose.position.y,
-                                     read_local_pos.pose.position.z);
-               ROS_INFO("Not home yet");
-              break ;
-             }
-    }
-
+    go_home();
 
     // now begin figure 8 path,
     i=0;
@@ -285,10 +303,11 @@ HOME:
     while(ros::ok()){
         // return to home position if px4 falls out of offboard mode or disarms
         if(current_state.mode != "OFFBOARD" || !current_state.armed){
-            goto HOME;
+            //goto HOME;
+            go_home();
         }
         target_local_pub.publish(path[i]);
-    i++;
+        i++;
         if(i>=STEPS) i=0;
 
         ros::spinOnce();
