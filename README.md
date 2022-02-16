@@ -23,8 +23,16 @@ $ source <your_path>/catkin_ws/devel/setup.bash
 $ roslaunch clover_simulation simulator.launch
 ```
 
-In another terminal, launch this node:
+In another terminal, launch this node for executing the mission:
 
 ```
+$ source <your_path>/catkin_ws/devel/setup.bash
 rosrun flight_test flight_test
+```
+
+In, yet, another terminal, launch this node for landing the drone:
+
+```
+$ source <your_path>/catkin_ws/devel/setup.bash
+rosrun flight_test cmd_hold
 ```
