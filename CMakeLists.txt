@@ -25,6 +25,11 @@ target_link_libraries(flight_test
   ${catkin_LIBRARIES}
 )
 
+add_executable(cmd_hold cmd_hold.cpp)
+target_link_libraries(cmd_hold
+  ${catkin_LIBRARIES}
+)
+
 #############
 ## Install ##
 #############

@@ -2,9 +2,9 @@
 <package format="2">
   <name>flight_test</name>
   <version>0.0.9</version>
-  <description>MAVROS Hover node test</description>
+  <description>MAVROS Hover node test and hold cmd</description>
 
-  <maintainer email="inigo.muguruza89@gmail.com">imuguruza</maintainer>
+  <maintainer email="xyz@gmail.com"></maintainer>
   <license>MIT</license>
   <url type="website">https://github.com/imuguruza</url>
 
