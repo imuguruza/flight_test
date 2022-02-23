@@ -4,7 +4,9 @@ project(flight_test)
 find_package(catkin REQUIRED COMPONENTS roscpp)
 
 catkin_package(
-#  INCLUDE_DIRS include
+  #INCLUDE_DIRS include
+  INCLUDE_DIRS /usr/local/include
+  DEPENDS CppLinuxSerial
 )
 
 ###########
@@ -28,6 +30,12 @@ target_link_libraries(flight_test
 add_executable(cmd_hold cmd_hold.cpp)
 target_link_libraries(cmd_hold
   ${catkin_LIBRARIES}
+)
+
+add_executable(cmd_stop_serial cmd_stop_serial.cpp)
+target_link_libraries(cmd_stop_serial
+  ${catkin_LIBRARIES}
+  CppLinuxSerial
 )
 
 #############
