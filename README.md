@@ -36,3 +36,13 @@ In, yet, another terminal, launch this node for landing the drone:
 $ source <your_path>/catkin_ws/devel/setup.bash
 rosrun flight_test cmd_hold
 ```
+OR you can use a serial port and send a stop command:
+
+```
+rosrun flight_test cmd_stop_serial
+# Using a FTDI with RX and TX connected,
+# in another terminal launch a stop string to trigger the previous ROS node:
+echo "stop" > /dev/ttyUSB0
+```
+
+This latest step can be replaced by a Companion Computer
